@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Les Live</title>
+<style>
+:root {
+  --bg: #f4f2ec; --panel: #fffdf8; --text: #1e2421; --muted: #646c67;
+  --line: #d9d6cc; --accent: #0d6b57; --accent-text: #ffffff; --stop: #b3261e; --warn: #8a5a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141816; --panel: #1c211f; --text: #e9ece9; --muted: #9aa39e;
+    --line: #333b37; --accent: #4fc3a6; --accent-text: #08231c; --stop: #f2867e; --warn: #e6b65c;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  min-height: 100dvh; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 40px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; letter-spacing: -.01em; }
+h2 { font-size: 1rem; margin: 0 0 8px; }
+p { margin: 0 0 12px; }
+.muted { color: var(--muted); font-size: .92rem; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 16px; }
+.choice { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 20px; }
+button, .btn {
+  font: inherit; font-weight: 600; min-height: 44px; padding: 10px 16px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.stop { background: var(--stop); border-color: var(--stop); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+button.big { width: 100%; min-height: 64px; font-size: 1.15rem; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+input, select {
+  font: inherit; min-height: 44px; padding: 8px 10px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+}
+#codeInput { width: 100%; font-size: 1.5rem; letter-spacing: .15em; text-align: center; text-transform: uppercase; }
+.pair { display: grid; grid-template-columns: 180px 1fr; gap: 16px; align-items: center; }
+#qr { background: #fff; border-radius: 8px; padding: 6px; width: 180px; height: 180px; }
+#qr svg { display: block; width: 100%; height: 100%; }
+#code { font: 700 2rem/1.2 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .1em; }
+.meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 8px 0; }
+.meter > div { height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+.status { font-weight: 600; }
+.status.bad { color: var(--stop); }
+.status.warn { color: var(--warn); }
+.timer { font: 700 3rem/1.1 ui-monospace, Menlo, Consolas, monospace; text-align: center; margin: 12px 0; }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.progress > div { height: 100%; width: 0; background: var(--accent); }
+#transcript { min-height: 45dvh; max-height: 65dvh; overflow-y: auto; overflow-wrap: anywhere; font-size: 1.05rem; }
+#transcript p { margin: 0 0 10px; }
+#transcript time { color: var(--muted); font-size: .8rem; margin-right: 8px; font-variant-numeric: tabular-nums; }
+#transcript hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+ol { margin: 0; padding-left: 20px; }
+[hidden] { display: none !important; }
+@media (max-width: 520px) { .pair { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Les Live</h1>
+
+  <section id="home">
+    <p class="muted">Neem je les op met je iPhone en zie de tekst live op je pc.</p>
+    <div class="choice">
+      <button class="primary big" id="choosePc">Dit is mijn pc</button>
+      <button class="big" id="choosePhone">Dit is mijn iPhone</button>
+    </div>
+    <div class="panel">
+      <h2>Zo werkt het</h2>
+      <ol class="muted">
+        <li>Open deze pagina op je pc in Chrome of Edge en kies "Dit is mijn pc".</li>
+        <li>Scan de QR-code met je iPhone.</li>
+        <li>Tik op Start en laat de pagina open met het scherm aan.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="pc" hidden>
+    <div class="panel" id="pairPanel">
+      <div class="pair">
+        <div id="qr"></div>
+        <div>
+          <h2>Scan met je iPhone</h2>
+          <div id="code">------</div>
+          <p class="muted">De code werkt zolang deze pagina open blijft.</p>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="status" id="pcStatus">Verbinden met de koppelserver...</div>
+      <div class="meter"><div id="pcLevel"></div></div>
+      <div class="muted" id="modelStatus">Spraakmodel laden...</div>
+      <div class="progress" id="modelBar"><div></div></div>
+      <div class="row" style="margin-top:12px">
+        <label class="muted">Taal
+          <select id="lang">
+            <option value="dutch">Nederlands</option>
+            <option value="english">Engels</option>
+            <option value="french">Frans</option>
+          </select>
+        </label>
+        <label class="muted">Model
+          <select id="model">
+            <option value="auto">Automatisch</option>
+            <option value="onnx-community/whisper-small">Nauwkeurig (small)</option>
+            <option value="onnx-community/whisper-base">Sneller (base)</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Tekst</h2>
+        <span class="muted" id="backlog"></span>
+      </div>
+      <div id="transcript" aria-live="polite"></div>
+      <div class="row" style="margin-top:12px">
+        <button id="copyText">Kopieer tekst</button>
+        <button id="saveText">Bewaar tekst</button>
+        <button id="savePcAudio" disabled>Bewaar opname</button>
+        <button id="clearText">Wis tekst</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="phone" hidden>
+    <div class="panel" id="oldRec" hidden>
+      <h2>Vorige opname gevonden</h2>
+      <p class="muted" id="oldRecInfo"></p>
+      <div class="row">
+        <button class="primary" id="oldSave">Bewaar</button>
+        <button id="oldDelete">Verwijder</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div id="codeBox">
+        <label class="muted" for="codeInput">Code op je pc</label>
+        <input id="codeInput" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      </div>
+      <div class="timer" id="timer">00:00:00</div>
+      <div class="meter"><div id="phoneLevel"></div></div>
+      <p class="status" id="phoneStatus">Klaar om te starten.</p>
+      <button class="primary big" id="start">Start opname</button>
+      <button class="stop big" id="stop" hidden>Stop opname</button>
+      <div id="saved" hidden style="margin-top:12px"></div>
+    </div>
+    <div class="panel muted">
+      Laat deze pagina open en vergrendel je iPhone niet: op de achtergrond stopt Safari de microfoon.
+      Leg je iPhone dicht bij de spreker en verbind hem met een lader bij een lange les.
+    </div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const query = new URLSearchParams(location.search);
+const PREFIX = 'les-live-v1-';
+const RATE = 16000;
+const peerOptions = query.get('peerhost')
+  ? { host: query.get('peerhost'), port: +query.get('peerport'), path: '/', secure: false }
+  : {};
+
+function show(id) { for (const s of ['home', 'pc', 'phone']) $(s).hidden = s !== id; }
+function setStatus(el, text, cls = '') { el.textContent = text; el.className = 'status ' + cls; }
+function stamp(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+function makeCode() {
+  const abc = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(6)), b => abc[b % abc.length]).join('');
+}
+function store(key, value) { try { localStorage.setItem(key, value); } catch {} }
+function recall(key) { try { return localStorage.getItem(key); } catch { return null; } }
+
+/* ---------- Pc: audio ontvangen, uittypen, bewaren ---------- */
+
+const WORKLET = `
+class Capture extends AudioWorkletProcessor {
+  constructor() { super(); this.block = new Float32Array(1600); this.fill = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    for (let i = 0; i < ch.length; i++) {
+      this.block[this.fill++] = ch[i];
+      if (this.fill === this.block.length) { this.port.postMessage(this.block.slice(0)); this.fill = 0; }
+    }
+    return true;
+  }
+}
+registerProcessor('capture', Capture);`;
+
+const WHISPER_WORKER = `
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1/dist/transformers.min.js';
+let transcriber = null;
+async function hasGpu() {
+  try { return !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch { return false; }
+}
+async function load(choice) {
+  const files = new Map();
+  const progress_callback = p => {
+    if (p.status !== 'progress' || !p.total) return;
+    files.set(p.file, [p.loaded, p.total]);
+    let loaded = 0, total = 0;
+    for (const [l, t] of files.values()) { loaded += l; total += t; }
+    postMessage({ type: 'progress', loaded, total });
+  };
+  const gpu = await hasGpu();
+  const model = choice !== 'auto' ? choice
+    : gpu ? 'onnx-community/whisper-small' : 'onnx-community/whisper-base';
+  const cpu = { device: 'wasm', dtype: 'q8', progress_callback };
+  if (gpu) {
+    try {
+      const options = { device: 'webgpu', dtype: { encoder_model: 'fp32', decoder_model_merged: 'q4' }, progress_callback };
+      transcriber = await pipeline('automatic-speech-recognition', model, options);
+      return postMessage({ type: 'ready', model, device: 'videokaart' });
+    } catch (err) {
+      console.warn('WebGPU mislukt, terugval op processor', err);
+      files.clear();
+    }
+  }
+  const fallback = gpu && choice === 'auto' ? 'onnx-community/whisper-base' : model;
+  transcriber = await pipeline('automatic-speech-recognition', fallback, cpu);
+  postMessage({ type: 'ready', model: fallback, device: 'processor' });
+}
+onmessage = async ({ data }) => {
+  try {
+    if (data.type === 'load') await load(data.model);
+    if (data.type === 'transcribe') {
+      const out = await transcriber(data.audio, { language: data.language, task: 'transcribe' });
+      postMessage({ type: 'result', text: out.text, time: data.time });
+    }
+  } catch (err) {
+    postMessage({ type: 'error', stage: data.type, message: String(err && err.message || err) });
+  }
+};`;
+
+const Whisper = {
+  worker: null, ready: false, busy: false,
+  start(model) {
+    if (this.worker) this.worker.terminate();
+    this.ready = this.busy = false;
+    $('modelBar').hidden = false;
+    $('modelStatus').textContent = 'Spraakmodel laden...';
+    const url = URL.createObjectURL(new Blob([WHISPER_WORKER], { type: 'text/javascript' }));
+    this.worker = new Worker(url, { type: 'module' });
+    this.worker.onmessage = e => this.message(e.data);
+    this.worker.onerror = () => { $('modelStatus').textContent = 'Spraakmodel kon niet starten. Herlaad de pagina in Chrome of Edge.'; };
+    this.worker.postMessage({ type: 'load', model });
+  },
+  message(m) {
+    if (m.type === 'progress') {
+      $('modelBar').firstElementChild.style.width = (100 * m.loaded / m.total) + '%';
+      $('modelStatus').textContent = `Spraakmodel downloaden: ${Math.round(m.loaded / 1e6)} van ${Math.round(m.total / 1e6)} MB (alleen de eerste keer)`;
+    } else if (m.type === 'ready') {
+      this.ready = true;
+      $('modelBar').hidden = true;
+      $('modelStatus').textContent = `Spraakmodel klaar: ${m.model.split('/')[1]} op de ${m.device}.`;
+      pump();
+    } else if (m.type === 'result') {
+      this.busy = false;
+      addLine(m.text, m.time);
+      pump();
+    } else if (m.type === 'error') {
+      this.busy = false;
+      $('modelStatus').textContent = m.stage === 'load'
+        ? `Spraakmodel laden mislukt: ${m.message}`
+        : `Uittypen mislukt: ${m.message}`;
+      if (m.stage !== 'load') pump();
+    }
+  }
+};
+
+/* Audiobuffer: wacht tot er genoeg spraak is en knipt op een stil moment. */
+let buffer = new Float32Array(RATE * 120), buffered = 0, flushing = false;
+
+function pushAudio(block) {
+  if (buffered + block.length > buffer.length) {
+    const bigger = new Float32Array(buffer.length * 2);
+    bigger.set(buffer.subarray(0, buffered));
+    buffer = bigger;
+  }
+  buffer.set(block, buffered);
+  buffered += block.length;
+  flushing = false;
+  pump();
+}
+
+function quietestCut(end) {
+  const frame = RATE / 10, start = Math.max(frame, end - 3 * RATE);
+  let best = end, bestEnergy = Infinity;
+  for (let p = end - frame; p >= start; p -= frame) {
+    let energy = 0;
+    for (let i = p; i < p + frame; i++) energy += buffer[i] * buffer[i];
+    if (energy < bestEnergy) { bestEnergy = energy; best = p + frame / 2; }
+  }
+  return best;
+}
+
+function pump() {
+  $('backlog').textContent = buffered > 12 * RATE ? `Achterstand: ${Math.round(buffered / RATE)} s` : '';
+  if (!Whisper.ready || Whisper.busy) return;
+  if (buffered < 8 * RATE && !(flushing && buffered > 0.3 * RATE)) return;
+  const end = Math.min(buffered, 28 * RATE);
+  const cut = buffered >= 8 * RATE ? quietestCut(end) : end;
+  const audio = buffer.slice(0, cut);
+  const time = Date.now() - 1000 * buffered / RATE;
+  buffer.copyWithin(0, cut, buffered);
+  buffered -= cut;
+  let energy = 0;
+  for (const s of audio) energy += s * s;
+  if (Math.sqrt(energy / audio.length) < 0.0015) return pump();
+  Whisper.busy = true;
+  Whisper.worker.postMessage({ type: 'transcribe', audio, time, language: $('lang').value }, [audio.buffer]);
+}
+
+/* Transcript */
+const GHOST_LINES = /amara\.org|ondertitel|bedankt voor het kijken|^\W*$|^\[.*\]$|^\(.*\)$/i;
+let lines = [], previousText = '';
+
+function renderLine(line) {
+  const box = $('transcript');
+  const pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  if (line.divider) box.append(document.createElement('hr'));
+  else {
+    const p = document.createElement('p');
+    const t = document.createElement('time');
+    t.textContent = new Date(line.time).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
+    p.append(t, line.text);
+    box.append(p);
+  }
+  if (pinned) box.scrollTop = box.scrollHeight;
+}
+function addLine(raw, time) {
+  const text = String(raw || '').trim();
+  if (GHOST_LINES.test(text) || text === previousText) return;
+  previousText = text;
+  const line = { time, text };
+  lines.push(line);
+  renderLine(line);
+  store('les-live-lines', JSON.stringify(lines));
+}
+function plainText() {
+  return lines.map(l => l.divider ? '' : `[${new Date(l.time).toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}] ${l.text}`).join('\n');
+}
+function restoreLines() {
+  try { lines = JSON.parse(recall('les-live-lines')) || []; } catch { lines = []; }
+  lines.forEach(renderLine);
+  if (lines.length) { const d = { divider: true }; lines.push(d); renderLine(d); }
+}
+
+/* Ontvangen stream */
+const Receiver = {
+  ctx: null, capture: null, dest: null, source: null, recorder: null, chunks: [], holder: null,
+  async prepare() {
+    this.ctx = new AudioContext({ sampleRate: RATE });
+    await this.ctx.resume();
+    const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
+    await this.ctx.audioWorklet.addModule(url);
+    this.capture = new AudioWorkletNode(this.ctx, 'capture', { numberOfInputs: 1, numberOfOutputs: 0 });
+    this.capture.port.onmessage = e => {
+      const b = e.data;
+      let energy = 0;
+      for (const s of b) energy += s * s;
+      $('pcLevel').style.width = Math.min(100, 700 * Math.sqrt(energy / b.length)) + '%';
+      pushAudio(b);
+    };
+    this.dest = this.ctx.createMediaStreamDestination();
+  },
+  attach(stream) {
+    // Chrome levert WebRTC-audio pas aan Web Audio als een audio-element de stream vasthoudt.
+    this.holder = this.holder || new Audio();
+    this.holder.muted = true;
+    this.holder.srcObject = stream;
+    this.holder.play().catch(() => {});
+    if (this.source) this.source.disconnect();
+    this.source = this.ctx.createMediaStreamSource(stream);
+    this.source.connect(this.capture);
+    this.source.connect(this.dest);
+    if (!this.recorder) {
+      this.recorder = new MediaRecorder(this.dest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 48000 });
+      this.recorder.ondataavailable = e => { if (e.data.size) { this.chunks.push(e.data); $('savePcAudio').disabled = false; } };
+      this.recorder.start(5000);
+    }
+  },
+  save() { downloadBlob(new Blob(this.chunks, { type: 'audio/webm' }), `les-pc-${stamp()}.webm`); }
+};
+
+async function startPc() {
+  show('pc');
+  restoreLines();
+  try { await Receiver.prepare(); }
+  catch (err) { setStatus($('pcStatus'), 'Audio kon niet starten. Gebruik Chrome of Edge.', 'bad'); return; }
+  Whisper.start($('model').value);
+
+  const code = makeCode();
+  $('code').textContent = code;
+  const qr = qrcode(0, 'M');
+  qr.addData(`${location.origin}${location.pathname}?code=${code}`);
+  qr.make();
+  $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+
+  const peer = new Peer(PREFIX + code.toLowerCase(), peerOptions);
+  let activeCall = null, stoppedByPhone = false;
+  peer.on('open', () => setStatus($('pcStatus'), 'Wacht op je iPhone...'));
+  peer.on('call', call => {
+    if (activeCall) activeCall.close();
+    activeCall = call;
+    stoppedByPhone = false;
+    call.answer();
+    call.on('stream', stream => {
+      Receiver.attach(stream);
+      $('pairPanel').hidden = true;
+      setStatus($('pcStatus'), 'iPhone verbonden. Geluid komt binnen.');
+    });
+    call.on('close', () => {
+      if (call !== activeCall) return;
+      activeCall = null;
+      flushing = true;
+      pump();
+      $('pairPanel').hidden = false;
+      if (!stoppedByPhone) setStatus($('pcStatus'), 'iPhone niet verbonden. De opname op je iPhone loopt door als de pagina open is.', 'warn');
+    });
+  });
+  peer.on('connection', dc => dc.on('data', msg => {
+    if (msg === 'stop') { stoppedByPhone = true; flushing = true; pump(); setStatus($('pcStatus'), 'Opname gestopt op je iPhone.'); }
+  }));
+  peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+  peer.on('error', err => {
+    if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+      setStatus($('pcStatus'), 'Geen verbinding met de koppelserver. Nieuwe poging...', 'warn');
+      setTimeout(() => { if (!peer.destroyed && peer.disconnected) peer.reconnect(); }, 4000);
+    } else if (err.type === 'unavailable-id') {
+      location.reload();
+    } else {
+      setStatus($('pcStatus'), 'Verbindingsfout: ' + err.type, 'bad');
+    }
+  });
+
+  $('model').onchange = () => Whisper.start($('model').value);
+  $('copyText').onclick = async () => {
+    try { await navigator.clipboard.writeText(plainText()); $('copyText').textContent = 'Gekopieerd'; }
+    catch { $('copyText').textContent = 'Kopieren mislukt'; }
+    setTimeout(() => { $('copyText').textContent = 'Kopieer tekst'; }, 1500);
+  };
+  $('saveText').onclick = () => downloadBlob(new Blob([plainText()], { type: 'text/plain;charset=utf-8' }), `les-${stamp()}.txt`);
+  $('savePcAudio').onclick = () => Receiver.save();
+  $('clearText').onclick = () => {
+    if (!confirm('Alle tekst wissen?')) return;
+    lines = []; previousText = ''; $('transcript').textContent = ''; store('les-live-lines', '[]');
+  };
+  addEventListener('beforeunload', e => { if (activeCall) e.preventDefault(); });
+}
+
+/* ---------- iPhone: opnemen en doorsturen ---------- */
+
+const Vault = {
+  db: null,
+  open() {
+    return new Promise(resolve => {
+      try {
+        const req = indexedDB.open('les-live', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('chunks', { autoIncrement: true });
+        req.onsuccess = () => { this.db = req.result; resolve(); };
+        req.onerror = () => resolve();
+      } catch { resolve(); }
+    });
+  },
+  add(item) {
+    try { this.db && this.db.transaction('chunks', 'readwrite').objectStore('chunks').add(item); } catch {}
+  },
+  all() {
+    return new Promise(resolve => {
+      if (!this.db) return resolve([]);
+      try {
+        const req = this.db.transaction('chunks').objectStore('chunks').getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve([]);
+      } catch { resolve([]); }
+    });
+  },
+  clear() {
+    try { this.db && this.db.transaction('chunks', 'readwrite').objectStore('chunks').clear(); } catch {}
+  }
+};
+
+const MIME = () => ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t));
+const extension = mime => mime.startsWith('audio/mp4') ? 'm4a' : 'webm';
+
+async function saveFile(blob, name) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file] }); return; }
+    catch (err) { if (err.name === 'AbortError') return; }
+  }
+  downloadBlob(blob, name);
+}
+
+const Phone = {
+  active: false, stream: null, recorder: null, peer: null, call: null, data: null,
+  pcId: '', session: 0, part: 0, parts: [], startedAt: 0, wake: null, retry: 0, ticker: 0, meter: null,
+
+  status(text, cls) { setStatus($('phoneStatus'), text, cls); },
+
+  async getMic() {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true, channelCount: 1 }
+    });
+    this.stream.getAudioTracks()[0].addEventListener('ended', () => this.recoverMic());
+    this.startMeter();
+  },
+
+  startMeter() {
+    if (!this.meter) {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      const silent = ctx.createGain();
+      silent.gain.value = 0;
+      analyser.connect(silent).connect(ctx.destination);
+      this.meter = { ctx, analyser, node: null, data: new Float32Array(1024) };
+    }
+    const m = this.meter;
+    m.ctx.resume().catch(() => {});
+    if (m.node) m.node.disconnect();
+    m.node = m.ctx.createMediaStreamSource(this.stream);
+    m.node.connect(m.analyser);
+  },
+
+  startPart() {
+    const mime = MIME();
+    const part = ++this.part;
+    const entry = { part, mime, chunks: [] };
+    this.parts.push(entry);
+    const rec = new MediaRecorder(this.stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+    this.recorder = rec;
+    rec.ondataavailable = e => {
+      if (!e.data.size) return;
+      entry.chunks.push(e.data);
+      Vault.add({ session: this.session, part, mime, blob: e.data });
+    };
+    rec.onstop = () => { if (this.active && this.recorder === rec) this.recoverMic(); };
+    rec.start(5000);
+  },
+
+  async recoverMic() {
+    if (!this.active || this.recovering) return;
+    this.recovering = true;
+    this.status('Microfoon onderbroken. Herstarten...', 'warn');
+    try {
+      if (this.recorder && this.recorder.state !== 'inactive') {
+        const old = this.recorder;
+        this.recorder = null;
+        old.stop();
+      }
+      await this.getMic();
+      this.startPart();
+      this.connect();
+    } catch {
+      this.status('Microfoon staat uit. Tik hier op de pagina om te herstarten.', 'bad');
+    }
+    this.recovering = false;
+  },
+
+  connect() {
+    clearTimeout(this.retry);
+    if (!this.active || !this.peer || !this.peer.open) return;
+    if (this.call) { const old = this.call; this.call = null; old.close(); }
+    const call = this.peer.call(this.pcId, this.stream);
+    if (!call) return this.scheduleRetry();
+    this.call = call;
+    this.data = this.peer.connect(this.pcId);
+    const lost = () => {
+      if (call !== this.call || !this.active) return;
+      this.call = null;
+      this.status('Pc niet bereikbaar. De opname op je iPhone loopt door.', 'warn');
+      this.scheduleRetry();
+    };
+    call.on('close', lost);
+    call.on('error', lost);
+    const pc = call.peerConnection;
+    pc.addEventListener('iceconnectionstatechange', () => {
+      const s = pc.iceConnectionState;
+      if (s === 'connected' || s === 'completed') this.status('Opname loopt. Tekst verschijnt op je pc.');
+      if (s === 'failed') lost();
+    });
+  },
+
+  scheduleRetry() {
+    clearTimeout(this.retry);
+    this.retry = setTimeout(() => this.connect(), 4000);
+  },
+
+  async holdScreen() {
+    try { if (navigator.wakeLock) this.wake = await navigator.wakeLock.request('screen'); } catch {}
+  },
+
+  async begin() {
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (code.length !== 6) return this.status('Vul de code van 6 tekens in.', 'bad');
+    $('start').disabled = true;
+    try { await this.getMic(); }
+    catch { $('start').disabled = false; return this.status('Geen toegang tot de microfoon. Sta dit toe in Safari.', 'bad'); }
+
+    this.pcId = PREFIX + code.toLowerCase();
+    this.session = Date.now();
+    this.startedAt = Date.now();
+    this.part = 0;
+    this.parts = [];
+    this.active = true;
+    this.startPart();
+    this.holdScreen();
+
+    $('start').hidden = true;
+    $('start').disabled = false;
+    $('stop').hidden = false;
+    $('codeBox').hidden = true;
+    $('saved').hidden = true;
+    this.status('Opname loopt. Verbinden met je pc...');
+    this.ticker = setInterval(() => this.tick(), 200);
+
+    this.peer = new Peer(peerOptions);
+    this.peer.on('open', () => this.connect());
+    this.peer.on('disconnected', () => { if (this.active && !this.peer.destroyed) this.peer.reconnect(); });
+    this.peer.on('error', err => {
+      if (!this.active) return;
+      if (err.type === 'peer-unavailable') {
+        this.status('Pc niet gevonden. Controleer de code of open de pc-pagina. De opname loopt door.', 'warn');
+        this.call = null;
+        this.scheduleRetry();
+      } else {
+        this.status('Verbinding verbroken. De opname op je iPhone loopt door.', 'warn');
+        setTimeout(() => {
+          if (!this.active || this.peer.destroyed) return;
+          if (this.peer.disconnected) this.peer.reconnect();
+          else this.scheduleRetry();
+        }, 4000);
+      }
+    });
+  },
+
+  tick() {
+    const s = Math.floor((Date.now() - this.startedAt) / 1000);
+    const p = n => String(n).padStart(2, '0');
+    $('timer').textContent = `${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
+    const m = this.meter;
+    if (m) {
+      m.analyser.getFloatTimeDomainData(m.data);
+      let energy = 0;
+      for (const v of m.data) energy += v * v;
+      $('phoneLevel').style.width = Math.min(100, 700 * Math.sqrt(energy / m.data.length)) + '%';
+    }
+  },
+
+  async end() {
+    this.active = false;
+    clearInterval(this.ticker);
+    clearTimeout(this.retry);
+    const rec = this.recorder;
+    if (rec && rec.state !== 'inactive') {
+      await new Promise(resolve => { rec.addEventListener('stop', () => setTimeout(resolve, 50), { once: true }); rec.stop(); });
+    }
+    try { if (this.data && this.data.open) this.data.send('stop'); } catch {}
+    await new Promise(r => setTimeout(r, 300));
+    this.stream.getTracks().forEach(t => t.stop());
+    if (this.call) this.call.close();
+    if (this.peer) this.peer.destroy();
+    if (this.wake) this.wake.release().catch(() => {});
+    this.wake = null;
+    $('phoneLevel').style.width = '0';
+    $('stop').hidden = true;
+    $('start').hidden = false;
+    $('start').textContent = 'Nieuwe opname';
+    $('codeBox').hidden = false;
+    this.status('Opname gestopt. Bewaar ze hieronder.');
+    showSaved(this.parts.filter(p => p.chunks.length).map(p => ({ blob: new Blob(p.chunks, { type: p.mime }), mime: p.mime })), this.session);
+  }
+};
+
+function showSaved(parts, session) {
+  const box = $('saved');
+  box.textContent = '';
+  box.hidden = false;
+  const base = `les-${stamp(new Date(session))}`;
+  parts.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'primary big';
+    btn.style.marginTop = '8px';
+    const mb = (p.blob.size / 1e6).toFixed(1);
+    btn.textContent = parts.length > 1 ? `Bewaar deel ${i + 1} (${mb} MB)` : `Bewaar opname (${mb} MB)`;
+    const name = base + (parts.length > 1 ? `-deel${i + 1}` : '') + '.' + extension(p.mime);
+    btn.onclick = () => saveFile(p.blob, name);
+    box.append(btn);
+  });
+  if (!parts.length) box.textContent = 'Er is geen geluid opgenomen.';
+}
+
+async function startPhone(code) {
+  show('phone');
+  if (code) { $('codeInput').value = code; }
+  await Vault.open();
+  const old = await Vault.all();
+  if (old.length) {
+    const sessions = new Map();
+    for (const c of old) {
+      const key = c.session + ':' + c.part;
+      if (!sessions.has(key)) sessions.set(key, { session: c.session, mime: c.mime, blobs: [] });
+      sessions.get(key).blobs.push(c.blob);
+    }
+    const parts = [...sessions.values()].map(s => ({ session: s.session, mime: s.mime, blob: new Blob(s.blobs, { type: s.mime }) }));
+    const mb = parts.reduce((n, p) => n + p.blob.size, 0) / 1e6;
+    $('oldRec').hidden = false;
+    $('oldRecInfo').textContent = `Bewaard op dit toestel: ${mb.toFixed(1)} MB. Bewaar ze voor je ze verwijdert.`;
+    $('oldSave').onclick = () => showSaved(parts, parts[0].session);
+    $('oldDelete').onclick = () => {
+      if (!confirm('Deze opname definitief verwijderen?')) return;
+      Vault.clear();
+      $('oldRec').hidden = true;
+      $('saved').hidden = true;
+    };
+  }
+  $('start').onclick = () => Phone.begin();
+  $('stop').onclick = () => { if (confirm('Opname stoppen?')) Phone.end(); };
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !Phone.active) return;
+    Phone.holdScreen();
+    if (Phone.meter) Phone.meter.ctx.resume().catch(() => {});
+    const track = Phone.stream && Phone.stream.getAudioTracks()[0];
+    if (!track || track.readyState === 'ended' || !Phone.recorder || Phone.recorder.state === 'inactive') Phone.recoverMic();
+    else if (!Phone.call) Phone.connect();
+  });
+  document.addEventListener('click', e => {
+    if (Phone.active && !e.target.closest('button') && Phone.stream.getAudioTracks()[0].readyState === 'ended') Phone.recoverMic();
+  });
+  addEventListener('beforeunload', e => { if (Phone.active) e.preventDefault(); });
+}
+
+$('choosePc').onclick = startPc;
+$('choosePhone').onclick = () => startPhone('');
+if (query.get('code')) startPhone(query.get('code').toUpperCase());
+else if (/iPhone|iPod/.test(navigator.userAgent)) {
+  $('choosePhone').className = 'primary big';
+  $('choosePc').className = 'big';
+  $('choosePhone').parentNode.prepend($('choosePhone'));
+}
+</script>
+</body>
+</html>
