@@ -624,23 +624,20 @@ const Phone = {
     if (!call) return this.scheduleRetry();
     this.call = call;
     this.data = this.peer.connect(this.pcId);
+    const describe = watchCandidates(call.peerConnection);
     const lost = () => {
       if (call !== this.call || !this.active) return;
       this.call = null;
-      this.status('Pc niet bereikbaar. De opname op je iPhone loopt door.', 'warn');
+      this.status(`Verbinding mislukt (${describe()}). De opname op je iPhone loopt door.`, 'warn');
       this.scheduleRetry();
     };
     call.on('close', lost);
     call.on('error', lost);
     const pc = call.peerConnection;
-    const describe = watchCandidates(pc);
     pc.addEventListener('iceconnectionstatechange', () => {
       const s = pc.iceConnectionState;
       if (s === 'connected' || s === 'completed') this.status('Opname loopt. Tekst verschijnt op je pc.');
-      if (s === 'failed') {
-        lost();
-        this.status(`Verbinding mislukt (${describe()}). De opname op je iPhone loopt door.`, 'warn');
-      }
+      if (s === 'failed') lost();
     });
   },
 
