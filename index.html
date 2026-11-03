@@ -171,6 +171,32 @@ const peerOptions = query.get('peerhost')
   ? { host: query.get('peerhost'), port: +query.get('peerport'), path: '/', secure: false }
   : {};
 
+/* Relay voor netwerken die een rechtstreekse verbinding blokkeren (openrelay.metered.ca). */
+async function connectionOptions() {
+  const username = String(Math.floor(Date.now() / 1000) + 86400);
+  const encode = t => new TextEncoder().encode(t);
+  const key = await crypto.subtle.importKey('raw', encode('openrelayprojectsecret'), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, encode(username));
+  const credential = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  const host = 'staticauth.openrelay.metered.ca';
+  let iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: [`turn:${host}:80`, `turn:${host}:80?transport=tcp`, `turn:${host}:443`, `turns:${host}:443?transport=tcp`], username, credential }
+  ];
+  if (query.get('turn')) {
+    try { iceServers = await (await fetch(query.get('turn'))).json(); } catch {}
+  }
+  return { ...peerOptions, config: { iceServers } };
+}
+
+function watchCandidates(pc) {
+  const seen = { host: 0, srflx: 0, relay: 0 };
+  pc.addEventListener('icecandidate', e => {
+    if (e.candidate && e.candidate.type in seen) seen[e.candidate.type]++;
+  });
+  return () => `lokaal ${seen.host}, extern ${seen.srflx}, relay ${seen.relay}`;
+}
+
 function show(id) { for (const s of ['home', 'pc', 'phone']) $(s).hidden = s !== id; }
 function setStatus(el, text, cls = '') { el.textContent = text; el.className = 'status ' + cls; }
 function stamp(d = new Date()) {
@@ -416,18 +442,26 @@ async function startPc() {
   const code = makeCode();
   $('code').textContent = code;
   const qr = qrcode(0, 'M');
-  qr.addData(`${location.origin}${location.pathname}?code=${code}`);
+  const turn = query.get('turn') ? `&turn=${encodeURIComponent(query.get('turn'))}` : '';
+  qr.addData(`${location.origin}${location.pathname}?code=${code}${turn}`);
   qr.make();
   $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
 
-  const peer = new Peer(PREFIX + code.toLowerCase(), peerOptions);
+  const peer = new Peer(PREFIX + code.toLowerCase(), await connectionOptions());
   let activeCall = null, stoppedByPhone = false;
   peer.on('open', () => setStatus($('pcStatus'), 'Wacht op je iPhone...'));
   peer.on('call', call => {
     if (activeCall) activeCall.close();
     activeCall = call;
     stoppedByPhone = false;
+    setStatus($('pcStatus'), 'iPhone gevonden. Verbinding opzetten...');
     call.answer();
+    const describe = watchCandidates(call.peerConnection);
+    call.peerConnection.addEventListener('iceconnectionstatechange', () => {
+      if (call === activeCall && call.peerConnection && call.peerConnection.iceConnectionState === 'failed') {
+        setStatus($('pcStatus'), `Verbinding mislukt (${describe()}). Nieuwe poging...`, 'warn');
+      }
+    });
     call.on('stream', stream => {
       Receiver.attach(stream);
       $('pairPanel').hidden = true;
@@ -599,10 +633,14 @@ const Phone = {
     call.on('close', lost);
     call.on('error', lost);
     const pc = call.peerConnection;
+    const describe = watchCandidates(pc);
     pc.addEventListener('iceconnectionstatechange', () => {
       const s = pc.iceConnectionState;
       if (s === 'connected' || s === 'completed') this.status('Opname loopt. Tekst verschijnt op je pc.');
-      if (s === 'failed') lost();
+      if (s === 'failed') {
+        lost();
+        this.status(`Verbinding mislukt (${describe()}). De opname op je iPhone loopt door.`, 'warn');
+      }
     });
   },
 
@@ -639,7 +677,7 @@ const Phone = {
     this.status('Opname loopt. Verbinden met je pc...');
     this.ticker = setInterval(() => this.tick(), 200);
 
-    this.peer = new Peer(peerOptions);
+    this.peer = new Peer(await connectionOptions());
     this.peer.on('open', () => this.connect());
     this.peer.on('disconnected', () => { if (this.active && !this.peer.destroyed) this.peer.reconnect(); });
     this.peer.on('error', err => {
