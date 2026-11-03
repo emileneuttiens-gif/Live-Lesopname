@@ -297,7 +297,7 @@ const Whisper = {
   message(m) {
     if (m.type === 'progress') {
       $('modelBar').firstElementChild.style.width = (100 * m.loaded / m.total) + '%';
-      $('modelStatus').textContent = `Spraakmodel downloaden: ${Math.round(m.loaded / 1e6)} van ${Math.round(m.total / 1e6)} MB (alleen de eerste keer)`;
+      $('modelStatus').textContent = `Spraakmodel laden: ${Math.round(m.loaded / 1e6)} van ${Math.round(m.total / 1e6)} MB`;
     } else if (m.type === 'ready') {
       this.ready = true;
       $('modelBar').hidden = true;
